@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'pdfViewer.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'api_service.dart';
 import 'japanFolder/api_serviceJP.dart';
@@ -9,7 +10,6 @@ import 'auto_update.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:unique_identifier/unique_identifier.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class SoftwareWebViewScreen extends StatefulWidget {
   final int linkID;
@@ -63,7 +63,10 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkForUpdates();
+      // Only check for updates if we're not already in the middle of an update
+      if (!AutoUpdate.isUpdating) {
+        _checkForUpdates();
+      }
     }
   }
 
@@ -89,29 +92,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
               _progress = 1;
             });
           },
-          onNavigationRequest: (NavigationRequest request) async {
-            final url = request.url;
-
-            // Handle intent or custom schemes
-            if (url.startsWith("intent://") || url.startsWith("whatsapp://") || url.startsWith("myapp://")) {
-              // Try to launch it with url_launcher
-              try {
-                final Uri parsedUri = Uri.parse(url.replaceFirst("intent://", "https://")); // fallback
-
-                if (await canLaunchUrl(parsedUri)) {
-                  await launchUrl(parsedUri, mode: LaunchMode.externalApplication);
-                } else {
-                  print("Can't launch the app for: $url");
-                }
-              } catch (e) {
-                print("Error launching URL: $e");
-              }
-
-              return NavigationDecision.prevent;
-            }
-
-            return NavigationDecision.navigate;
-          },
         ),
       );
   }
@@ -124,7 +104,66 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
       debugPrint('Update check failed: $e');
     }
   }
-
+  // Future<void> _refreshAllData() async {
+  //   // Reset loading state
+  //   setState(() {
+  //     _isLoading = true;
+  //   });
+  //
+  //   // First check if IDNumber in SharedPreferences matches the one from the server
+  //   bool shouldRefetchUrl = await _shouldRefetchUrl();
+  //
+  //   // Refresh all necessary data
+  //   await _loadPhOrJp();
+  //   await _loadCurrentLanguageFlag();
+  //   await _fetchDeviceInfo();
+  //
+  //   // If IDNumbers don't match, fetch a new URL
+  //   if (shouldRefetchUrl) {
+  //     await _fetchAndLoadUrl();
+  //   } else {
+  //     // Otherwise just reload the current URL
+  //     String? currentUrl = await _controller.currentUrl();
+  //     if (currentUrl != null) {
+  //       _controller.loadRequest(Uri.parse(currentUrl));
+  //     } else if (_webUrl != null) {
+  //       // Fallback to the stored URL if currentUrl is null
+  //       _controller.loadRequest(Uri.parse(_webUrl!));
+  //     }
+  //   }
+  //
+  //   setState(() {
+  //     _isLoading = false;
+  //   });
+  // }
+  //
+  // Future<bool> _shouldRefetchUrl() async {
+  //   try {
+  //     // Get the stored IDNumber from SharedPreferences
+  //     final prefs = await SharedPreferences.getInstance();
+  //     String? storedIdNumber = prefs.getString('IDNumber');
+  //
+  //     // Get the latest IDNumber from the server
+  //     String? deviceId = await UniqueIdentifier.serial;
+  //     if (deviceId == null) {
+  //       return true; // If we can't get device ID, refetch to be safe
+  //     }
+  //
+  //     final deviceResponse = await apiService.checkDeviceId(deviceId);
+  //     String? serverIdNumber = deviceResponse['success'] == true ? deviceResponse['idNumber'] : null;
+  //
+  //     // If either IDNumber is null or they don't match, we should refetch the URL
+  //     if (storedIdNumber == null || serverIdNumber == null || storedIdNumber != serverIdNumber) {
+  //       debugPrint("IDNumber changed: $storedIdNumber -> $serverIdNumber. Refetching URL.");
+  //       return true;
+  //     }
+  //
+  //     return false; // IDNumbers match, no need to refetch URL
+  //   } catch (e) {
+  //     debugPrint("Error checking IDNumber: $e");
+  //     return true; // On error, refetch to be safe
+  //   }
+  // }
   Future<void> _fetchDeviceInfo() async {
     try {
       String? deviceId = await UniqueIdentifier.serial;
@@ -578,6 +617,51 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
                                   iconSize: 28,
                                   onPressed: () {
                                     _showInputMethodPicker();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 20),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 29.0),
+                            child: Row(
+                              children: [
+                                Text(
+                                  "Manual",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(width: 15),
+                                IconButton(
+                                  icon: Icon(Icons.menu_book, size: 28),
+                                  iconSize: 28,
+                                  onPressed: () async {
+                                    if (_idNumber == null || _currentLanguageFlag == null) return;
+
+                                    try {
+                                      final manualUrl = await apiService.fetchManualLink(widget.linkID, _currentLanguageFlag!);
+                                      final fileName = 'manual_${widget.linkID}_${_currentLanguageFlag}.pdf';
+
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => PDFViewerScreen(
+                                            pdfUrl: manualUrl,
+                                            fileName: fileName,
+                                            languageFlag: _currentLanguageFlag!, // Add this line
+                                          ),
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      Fluttertoast.showToast(
+                                        msg: "Error loading manual: ${e.toString()}",
+                                        toastLength: Toast.LENGTH_LONG,
+                                        gravity: ToastGravity.BOTTOM,
+                                      );
+                                    }
                                   },
                                 ),
                               ],
