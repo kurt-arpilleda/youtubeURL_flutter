@@ -221,11 +221,11 @@ class ApiService {
             }
           }
         } catch (e) {
-          String errorMessage = "Error accessing $apiUrl on attempt $attempt";
-          print(errorMessage);
+          // String errorMessage = "Error accessing $apiUrl on attempt $attempt";
+          // print(errorMessage);
 
           if (i == 0 && apiUrls.length > 1) {
-            print("Falling back to ${apiUrls[1]}");
+            // print("Falling back to ${apiUrls[1]}");
           }
         }
       }
