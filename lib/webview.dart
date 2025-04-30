@@ -372,7 +372,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
           preferredSize: Size.fromHeight(kToolbarHeight - 20),
           child: SafeArea(
             child: AppBar(
-              backgroundColor: Color(0xFF2053B3),
+              backgroundColor: Color(0xFF3452B4),
               centerTitle: true,
               toolbarHeight: kToolbarHeight - 20,
               leading: IconButton(
