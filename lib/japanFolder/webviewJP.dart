@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../pdfViewer.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../api_service.dart';
-import '../pdfViewer.dart';
 import 'api_serviceJP.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -70,7 +70,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     }
   }
 
-
   void _initializeWebViewController() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -96,6 +95,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
         ),
       );
   }
+
   Future<void> _checkForUpdates() async {
     try {
       await AutoUpdate.checkForUpdate(context);
@@ -104,70 +104,16 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       debugPrint('Update check failed: $e');
     }
   }
-  // Future<void> _refreshAllData() async {
-  //   // Reset loading state
-  //   setState(() {
-  //     _isLoading = true;
-  //   });
-  //   // First check if IDNumber in SharedPreferences matches the one from the server
-  //   bool shouldRefetchUrl = await _shouldRefetchUrl();
-  //
-  //   // Refresh all necessary data
-  //   await _loadPhOrJp();
-  //   await _loadCurrentLanguageFlag();
-  //   await _fetchDeviceInfo();
-  //
-  //   // If IDNumbers don't match, fetch a new URL
-  //   if (shouldRefetchUrl) {
-  //     await _fetchAndLoadUrl();
-  //   } else {
-  //     // Otherwise just reload the current URL
-  //     String? currentUrl = await _controller.currentUrl();
-  //     if (currentUrl != null) {
-  //       _controller.loadRequest(Uri.parse(currentUrl));
-  //     } else if (_webUrl != null) {
-  //       // Fallback to the stored URL if currentUrl is null
-  //       _controller.loadRequest(Uri.parse(_webUrl!));
-  //     }
-  //   }
-  //
-  //   setState(() {
-  //     _isLoading = false;
-  //   });
-  // }
-  //
-  // Future<bool> _shouldRefetchUrl() async {
-  //   try {
-  //     // Get the stored IDNumber from SharedPreferences
-  //     final prefs = await SharedPreferences.getInstance();
-  //     String? storedIdNumber = prefs.getString('IDNumberJP');
-  //     // Get the latest IDNumber from the server
-  //     String? deviceId = await UniqueIdentifier.serial;
-  //     if (deviceId == null) {
-  //       return true; // If we can't get device ID, refetch to be safe
-  //     }
-  //     final deviceResponse = await apiServiceJP.checkDeviceId(deviceId);
-  //     String? serverIdNumber = deviceResponse['success'] == true ? deviceResponse['idNumber'] : null;
-  //
-  //     // If either IDNumber is null or they don't match, we should refetch the URL
-  //     if (storedIdNumber == null || serverIdNumber == null || storedIdNumber != serverIdNumber) {
-  //       debugPrint("IDNumber changed: $storedIdNumber -> $serverIdNumber. Refetching URL.");
-  //       return true;
-  //     }
-  //
-  //     return false; // IDNumbers match, no need to refetch URL
-  //   } catch (e) {
-  //     debugPrint("Error checking IDNumber: $e");
-  //     return true; // On error, refetch to be safe
-  //   }
-  // }
   Future<void> _fetchDeviceInfo() async {
     try {
       String? deviceId = await UniqueIdentifier.serial;
       if (deviceId == null) {
-        throw Exception("Unable to get device ID");
+        throw Exception(
+          _currentLanguageFlag == 2
+              ? "デバイスIDを取得できません"
+              : "Unable to get device ID",
+        );
       }
-
       final deviceResponse = await apiServiceJP.checkDeviceId(deviceId);
       if (deviceResponse['success'] == true && deviceResponse['idNumber'] != null) {
         // Store the IDNumber in SharedPreferences
@@ -183,7 +129,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       print("Error fetching device info: $e");
     }
   }
-
   Future<void> _fetchAndLoadUrl() async {
     try {
       String url = await apiServiceJP.fetchSoftwareLink(widget.linkID);
@@ -201,6 +146,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       }
     }
   }
+
   Future<void> _loadPhOrJp() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -219,12 +165,13 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
 
         String fallbackUrl = "${ApiServiceJP.apiUrls[1]}V4/11-A%20Employee%20List%20V2/profilepictures/$profilePictureFileName";
         bool isFallbackUrlValid = await _isImageAvailable(fallbackUrl);
-
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('languageFlagJP', profileData["languageFlag"]);
         setState(() {
           _firstName = profileData["firstName"];
           _surName = profileData["surName"];
           _profilePictureUrl = isPrimaryUrlValid ? primaryUrl : isFallbackUrlValid ? fallbackUrl : null;
-          _currentLanguageFlag = profileData["languageFlag"];
+          _currentLanguageFlag = profileData["languageFlag"] ?? _currentLanguageFlag ?? 2;
         });
       }
     } catch (e) {
@@ -241,10 +188,11 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     }
   }
 
+
   Future<void> _loadCurrentLanguageFlag() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
-      _currentLanguageFlag = prefs.getInt('languageFlag');
+      _currentLanguageFlag = prefs.getInt('languageFlagJP');
     });
   }
 
@@ -256,7 +204,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       try {
         await apiServiceJP.updateLanguageFlag(_idNumber!, flag);
         SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('languageFlag', flag);
+        await prefs.setInt('languageFlagJP', flag);
 
         String? currentUrl = await _controller.currentUrl();
         if (currentUrl != null) {
@@ -320,7 +268,9 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     } catch (e) {
       print("Error updating country preference: $e");
       Fluttertoast.showToast(
-        msg: "Error checking device registration: ${e.toString()}",
+        msg: _currentLanguageFlag == 2
+            ? "デバイス登録の確認中にエラーが発生しました: ${e.toString()}"
+            : "Error checking device registration: ${e.toString()}",
         toastLength: Toast.LENGTH_LONG,
         gravity: ToastGravity.BOTTOM,
       );
@@ -354,16 +304,23 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                 height: 26,
               ),
               SizedBox(width: 8),
-              Text("ログインが必要です",
+              Text(
+                _currentLanguageFlag == 2 ? "ログインが必要です" : "Login Required",
                 overflow: TextOverflow.ellipsis,
                 softWrap: false,
                 style: TextStyle(fontSize: 20),
               ),
             ],
           ),
-          content: Text(country == 'ph'
-              ? "まず、ARK LOG PHアプリにログインしてください。"
-              : "まず、ARK LOG JPアプリにログインしてください。"),
+          content: Text(
+            country == 'ph'
+                ? (_currentLanguageFlag == 2
+                ? "まずARK LOG PHアプリにログインしてください"
+                : "Please login to ARK LOG PH App first")
+                : (_currentLanguageFlag == 2
+                ? "まずARK LOG JPアプリにログインしてください"
+                : "Please login to ARK LOG JP App first"),
+          ),
           actions: [
             TextButton(
               child: Text("OK"),
@@ -415,7 +372,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
           preferredSize: Size.fromHeight(kToolbarHeight - 20),
           child: SafeArea(
             child: AppBar(
-              backgroundColor: Color(0xFF3452B4),
+              backgroundColor: Color(0xFF2053B3),
               centerTitle: true,
               toolbarHeight: kToolbarHeight - 20,
               leading: IconButton(
@@ -514,12 +471,15 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                                 Text(
                                   _firstName != null && _surName != null
                                       ? "$_firstName $_surName"
-                                      : "ユーザー名",
+                                      : _currentLanguageFlag == 2
+                                      ? "ユーザー名"
+                                      : "User Name",
                                   style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      overflow: TextOverflow.ellipsis,
-                                      fontWeight: FontWeight.bold),
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    overflow: TextOverflow.ellipsis,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 SizedBox(height: 5),
                                 if (_idNumber != null)
@@ -544,11 +504,15 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                           ),
                           SizedBox(height: 10),
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: _currentLanguageFlag == 2 ? 35.0 : 16.0,
+                            ),
                             child: Row(
                               children: [
                                 Text(
-                                  "言語",
+                                  _currentLanguageFlag == 2
+                                      ? '言語'
+                                      : 'Language',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -601,7 +565,9 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                             child: Row(
                               children: [
                                 Text(
-                                  "キーボード",
+                                  _currentLanguageFlag == 2
+                                      ? 'キーボード'
+                                      : 'Keyboard',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -620,11 +586,15 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                           ),
                           SizedBox(height: 20),
                           Padding(
-                            padding: const EdgeInsets.only(left: 46.0),
+                            padding: EdgeInsets.only(
+                              left: _currentLanguageFlag == 2 ? 46.0 : 30.0,
+                            ),
                             child: Row(
                               children: [
                                 Text(
-                                  "手引き",
+                                  _currentLanguageFlag == 2
+                                      ? '手引き'
+                                      : 'Manual',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -653,10 +623,13 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                                       );
                                     } catch (e) {
                                       Fluttertoast.showToast(
-                                        msg: "Error loading manual: ${e.toString()}",
+                                        msg: _currentLanguageFlag == 2
+                                            ? "マニュアルの読み込み中にエラーが発生しました: ${e.toString()}"
+                                            : "Error loading manual: ${e.toString()}",
                                         toastLength: Toast.LENGTH_LONG,
                                         gravity: ToastGravity.BOTTOM,
                                       );
+
                                     }
                                   },
                                 ),
@@ -672,7 +645,9 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                     child: Row(
                       children: [
                         Text(
-                          "国",
+                          _currentLanguageFlag == 2
+                              ? '国'
+                              : 'Country',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
